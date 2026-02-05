@@ -1,0 +1,10 @@
+{
+  "name": "Notify Empty Decks",
+  "mod": 1770259657,
+  "min_anki_version": "2.1.55",
+  "max_anki_version": "2.1.*",
+  "author": "",
+  "version": "0.1.0",
+  "description": "Find decks with zero new cards so you can decide what to study next.",
+  "homepage": ""
+}
