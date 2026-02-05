@@ -1,4 +1,5 @@
 {
   "menu_title": "Find Empty New-Card Decks",
-  "show_when_profile_opens": false
+  "show_when_profile_opens": false,
+  "show_all_decks": true
 }
