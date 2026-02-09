@@ -1,0 +1,14 @@
+{
+  "menu_title": "Find Empty New-Card Decks",
+  "show_when_profile_opens": false,
+  "notify_every_n_days": 0,
+  "notify_never": true,
+  "last_opened_at": 0,
+  "name_filter": "",
+  "filter_filtered_decks": true,
+  "filter_container_decks": true,
+  "filter_empty_decks": true,
+  "filter_limits_zero": true,
+  "filter_available_zero": true,
+  "filter_has_new": true
+}

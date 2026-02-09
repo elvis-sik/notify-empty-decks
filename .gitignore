@@ -9,3 +9,8 @@ __pycache__/
 .cache/
 .idea/
 .vscode/
+
+# Local/dev artifacts
+dist/
+*.ankiaddon
+config.json
