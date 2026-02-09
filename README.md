@@ -1,6 +1,8 @@
 # Notify Empty Decks
 
-Anki add-on for people with many decks who introduce new cards slowly.
+Anki add-on for people with many too many decks who want to keep track of which of their decks still are showing new cards every day.
+
+AnkiWeb: https://ankiweb.net/shared/info/1630214543
 
 ![Notify Empty Decks report](report-screenshot.png)
 
