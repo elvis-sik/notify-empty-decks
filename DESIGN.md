@@ -1,70 +1,78 @@
 # Notify Empty Decks - Design
 
 ## Goal
-Help identify decks with no new cards so you can decide what to study next or which decks to unsuspend from.
+Help users quickly understand why a deck currently shows no new cards, so they can decide when to unsuspend the next deck in their study pipeline.
 
-## User Story
-- Example: `Música` → `Audio Cards` and `Silent Cards` → `Sheet`.
-- You have G cleff cards unsuspended and F cleff cards suspended.
-- You want to know when the G cleff cards are done so you can unsuspend F cleff.
-- There are many decks, so manual checking is too tedious.
+## Example Workflow
+A user studies music-reading decks in sequence:
 
-## Status Categories
-The design should surface two different "empty" cases:
+- `Music Reading::Treble`
+- `Music Reading::Bass`
 
-1. **Zero due to limits (0/day)**
-   - Decks whose effective new cards/day is 0.
-   - This may be caused by `Preset`, `This deck`, or `Today only` settings.
-   - Intention: "You will see 0 new cards regardless of availability."
+They keep `Treble` unsuspended and `Bass` suspended until `Treble` runs out of new cards. With many decks, manually checking each one is slow and error-prone. This add-on provides a single report that shows deck status and the reason.
 
-2. **Zero due to availability**
-   - Decks with a positive new-cards/day limit but currently no *unsuspended* new cards.
-   - Intention: "You could see new cards, but none are available right now."
+## Core Status Model
+The report distinguishes two different "zero new cards" states:
 
-## Aggregation Rules (Parents)
-- Parent decks aggregate from children using **ANY** semantics:
-  - If any child deck is in a given status category, the parent should reflect that category.
-  - If children span multiple categories, choose a priority order (see below).
+1. **Zero due to limits (`0/day (limits)`)**
+   - Effective new-cards/day is `0`.
+   - Usually caused by deck or preset limits.
+   - Meaning: no new cards will be shown even if cards exist.
 
-## Proposed Visual Encoding
-- Use icons + color to avoid ambiguity.
-- Suggested mapping:
-  - **Limits block (0/day):** Red circle with slash (or red badge). Suggested color: `#C0392B`.
-  - **Availability block (no unsuspended new cards):** Amber dot/badge. Suggested color: `#F39C12`.
-  - **Normal / has new cards:** Green dot. Suggested color: `#27AE60`.
-- Text fallback should be available in tooltips or list rows:
-  - "0 new cards/day (limits)"
-  - "0 available new cards (all suspended or none exist)"
+2. **Zero due to availability (`0 available (unsuspended)`)**
+   - Deck limit is positive, but unsuspended new-card count is `0`.
+   - Meaning: the deck could show new cards, but none are currently available.
 
-## Parent Priority (When Mixed)
-- If any child is **limits block** → parent shows limits block.
-- Else if any child is **availability block** → parent shows availability block.
-- Else parent is normal.
+3. **Normal (`Has new cards`)**
+   - Unsuspended new cards are available.
 
-## Notification Channel Options
-These are compatible with Anki add-ons and can be configured:
+## Hierarchy and Aggregation
+- Decks are shown as a tree.
+- Parent deck status is derived from children using priority:
+1. `limits`
+2. `availability`
+3. `normal`
+- Aggregated counts (unsuspended and suspended new cards) include descendants.
 
-1. **Tools menu action (manual)**
-   - Current default. Least intrusive.
-   - Good for checking when you want to plan study time.
+## Filtering Behavior
+- UI filters can include/exclude deck categories and status categories.
+- Name filtering preserves hierarchy context:
+  - Matching rows are active.
+  - Ancestor rows required to keep structure are shown in muted gray.
 
-2. **Popup on profile open (optional)**
-   - Quick summary modal with counts and top-level deck list.
-   - Add a preference to enable/disable.
+## Visual Encoding
+- Status colors:
+  - Limits: `#C0392B`
+  - Availability: `#F39C12`
+  - Normal: `#27AE60`
+- Deck-type overrides:
+  - Filtered decks: blue
+  - Container decks: black
+  - Empty decks: gray
 
-3. **Status bar summary**
-   - Always visible; shows counts per category.
-   - Clicking opens the full report.
+## Deck Type Definitions
+- **Container deck**: no direct cards, but has child decks.
+- **Empty deck**: no cards and no child decks.
+- **Filtered deck**: dynamic deck (`dyn` flag).
 
-4. **Daily notification (scheduled)**
-   - On first open per day, show a summary.
-   - Optional and configurable.
+## Report UI
+Columns:
 
-## Open Questions
-- Should the report list only "empty" decks, or show all decks with status badges?
-- Should we include counts per deck (new limit, available new, total suspended new)?
-- When a parent is in a mixed state, do you want a combined badge or strictly the priority rules?
+- Deck
+- Status
+- New/day
+- Unsuspended new
+- Suspended new
 
-## Next Step Proposal
-- Implement a summary dialog listing decks by category, grouped by top-level deck, with badges.
-- Add an option to enable profile-open popup with a brief summary and a "View details" button.
+Behavior:
+
+- Clickable column headers for sorting.
+- Hover tooltips explain status and count meaning.
+- Refresh button recomputes all values.
+
+## Notification and Launch
+- Manual launch from `Tools -> Find Empty New-Card Decks`.
+- Optional profile-open behavior via config:
+  - `notify_never = true`: disable automatic opening.
+  - `notify_every_n_days = 0`: open every profile load.
+  - `notify_every_n_days > 0`: open only after N days since last open.
