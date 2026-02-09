@@ -1,72 +1,49 @@
 # Notify Empty Decks
 
-`Notify Empty Decks` is an Anki add-on for finding decks that show no new cards, and explaining why.
+Anki add-on for people with many decks who introduce new cards slowly.
 
-It separates the two common cases:
+![Notify Empty Decks report](report-screenshot.png)
 
-- `0/day (limits)`: the deck's effective new limit is zero.
-- `0 available (unsuspended)`: the limit allows new cards, but no unsuspended new cards are currently available.
+## Who This Is For
 
-This makes it easier to decide when to unsuspend the next deck in your sequence.
+This is mainly useful if:
 
-## What It Does
+- You have a large deck tree.
+- You keep some decks or cards suspended until others are finished.
+- You want to study a subject again once its deck runs out of new cards.
+- You can go days or weeks before noticing a deck has no new cards left.
 
-From `Tools -> Find Empty New-Card Decks`, the add-on opens a report window with:
+If that sounds familiar, this add-on helps you catch "silent" deck exhaustion quickly.
 
-- Deck tree with parent/child hierarchy.
-- Status column (`0/day (limits)`, `0 available (unsuspended)`, `Has new cards`).
-- `New/day`, `Unsuspended new`, and `Suspended new` columns.
-- Color coding for status and deck type (filtered, container, empty).
-- Clickable headers for column sorting.
-- Live filters for deck kinds and status categories.
+## The Problem It Solves
 
-## Hierarchy + Name Filter Behavior
+If you have dozens of decks, collection review is usually fast and high-level. In that mode, it is easy to miss that specific decks are no longer producing new cards.
 
-When filtering by name, matching decks remain visible with parent context preserved.
+The alternative is checking decks one-by-one in the browser, which is slow and tedious in large collections.
 
-- Matching rows are "active".
-- Parent rows that are shown only to preserve structure are muted gray.
+This add-on gives you one focused report so you can spot stalled decks quickly and decide what to unsuspend next.
 
-This keeps nested decks readable while still narrowing the list.
+## What You See
 
-## Status Rules
+Open `Tools -> Find Empty New-Card Decks`.
 
-- Parent deck status is aggregated from descendants using priority:
-1. `limits`
-2. `availability`
-3. `normal`
-- Counts shown in the table are aggregated counts (deck + descendants).
+You get a deck report with:
 
-## Deck Types
+- Tree structure (parents + children).
+- Status labels:
+  - `0/day (limits)`
+  - `0 available (unsuspended)`
+  - `Has new cards`
+- Columns for `New/day`, `Unsuspended new`, and `Suspended new`.
+- Sortable columns.
+- Name filtering that keeps parent context visible (non-matching context rows are muted gray).
 
-- `Container deck`: has no cards directly, but has child decks.
-- `Empty deck`: has no cards and no child decks.
-- `Filtered deck`: dynamic Anki deck (`dyn`).
+## Typical Workflow
 
-## Auto-Open / Notification Behavior
-
-The report can open automatically on profile load:
-
-- `notify_never = true`: never auto-open.
-- `notify_every_n_days = 0`: open every profile open.
-- `notify_every_n_days > 0`: open only if last open was at least N days ago.
-
-## Configuration
-
-Settings are stored in `config.json` and also driven by the report UI.
-
-- `menu_title`: Tools menu label.
-- `show_when_profile_opens`: open report when profile opens.
-- `notify_every_n_days`: days between auto-open checks (`0` means every time).
-- `notify_never`: disable auto-open behavior.
-- `last_opened_at`: internal timestamp used by auto-open logic.
-- `name_filter`: substring filter for deck names.
-- `filter_filtered_decks`: include filtered decks.
-- `filter_container_decks`: include container decks.
-- `filter_empty_decks`: include empty decks.
-- `filter_limits_zero`: include `0/day (limits)` rows.
-- `filter_available_zero`: include `0 available (unsuspended)` rows.
-- `filter_has_new`: include `Has new cards` rows.
+1. Study as usual.
+2. Open this report when planning what to unsuspend next.
+3. Check decks marked `0/day (limits)` or `0 available (unsuspended)`.
+4. Unsuspend the next deck in your pipeline when needed.
 
 ## Install (From Source)
 
@@ -75,6 +52,7 @@ Settings are stored in `config.json` and also driven by the report UI.
    - macOS example: `~/Library/Application Support/Anki2/addons21/notify-empty-decks`
 3. Restart Anki.
 
-## Compatibility
+## Notes
 
-- Built for Anki 25.x (Qt6/PyQt6 environment).
+- Works in Anki's Qt6/PyQt6 environment (Anki 25.x).
+- Advanced options are available in `config.json`, but most users can use the add-on without editing config manually.
