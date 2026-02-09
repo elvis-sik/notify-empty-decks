@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from aqt import gui_hooks, mw
 from aqt.qt import (
     QAction,
+    Qt,
     QCheckBox,
     QDialog,
     QFormLayout,
@@ -236,6 +237,16 @@ def _parent_name(deck_name: str) -> Optional[str]:
     return deck_name.rsplit("::", 1)[0]
 
 
+def _ancestor_names(deck_name: str, known_names: Dict[str, DeckInfo]) -> List[str]:
+    ancestors: List[str] = []
+    parent = _parent_name(deck_name)
+    while parent:
+        if parent in known_names:
+            ancestors.append(parent)
+        parent = _parent_name(parent)
+    return ancestors
+
+
 def _aggregate_status(
     deck_names: List[str], self_status: Dict[str, str]
 ) -> Dict[str, str]:
@@ -410,7 +421,14 @@ def _populate_report(dialog: QDialog) -> None:
     included_names = [
         name for name in deck_names if _include_deck(name, info_by_name[name], config)
     ]
-    no_matches = not included_names
+    matched_names = set(included_names)
+
+    visible_names = set(matched_names)
+    for name in matched_names:
+        for ancestor in _ancestor_names(name, info_by_name):
+            visible_names.add(ancestor)
+
+    no_matches = not matched_names
 
     dialog.setWindowTitle(f"Empty New-Card Decks (v{ADDON_VERSION})")
     if dialog.layout() is None:
@@ -430,10 +448,10 @@ def _populate_report(dialog: QDialog) -> None:
     options_grid = QGridLayout()
 
     filter_box = QLineEdit()
-    filter_box.setPlaceholderText("Filter by name (breaks nesting)")
+    filter_box.setPlaceholderText("Filter by name")
     filter_box.setText(config.get("name_filter", ""))
     filter_box.textChanged.connect(lambda text: _update_option("name_filter", text, dialog))
-    filter_box.setToolTip("Filter decks by name substring (breaks nesting).")
+    filter_box.setToolTip("Filter decks by name substring. Parent context remains visible.")
 
     notify_spin = QSpinBox()
     notify_spin.setMinimum(0)
@@ -525,14 +543,17 @@ def _populate_report(dialog: QDialog) -> None:
             ["Deck", "Status", "New/day", "Unsuspended new", "Suspended new"]
         )
         _report_tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        _report_tree.setSortingEnabled(True)
+        _report_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
     tree = _report_tree
     tree.clear()
     tree.setToolTip("Deck status list. Hover items for details.")
 
     item_by_name: Dict[str, QTreeWidgetItem] = {}
-    for name in sorted(included_names, key=lambda n: n.count("::")):
+    for name in sorted(visible_names, key=lambda n: (n.count("::"), n)):
         info = info_by_name[name]
         parent_name = _parent_name(name)
+        is_active = name in matched_names
         status_label = STATUS_LABELS[info.agg_status]
         limit_label = _format_limit(info.new_limit, info.is_filtered)
         unsuspended_label = str(info.agg_unsuspended_new)
@@ -562,6 +583,11 @@ def _populate_report(dialog: QDialog) -> None:
         item.setToolTip(
             4, f"Suspended new cards (including children): {info.agg_suspended_new}"
         )
+        if not is_active:
+            muted = QColor(149, 165, 166)
+            for col in range(5):
+                item.setForeground(col, muted)
+            item.setToolTip(0, f"{name}\nShown for hierarchy context.")
 
         if parent_name and parent_name in item_by_name:
             item_by_name[parent_name].addChild(item)
