@@ -10,18 +10,20 @@ This is mainly useful if:
 
 - You have a large deck tree.
 - You keep some decks or cards suspended until others are finished.
-- You want to study a subject again once its deck runs out of new cards.
-- You can go days or weeks before noticing a deck has no new cards left.
+- You introduce new cards slowly across many decks.
+- Some decks can quietly stop showing new cards and you do not notice right away.
 
 If that sounds familiar, this add-on helps you catch "silent" deck exhaustion quickly.
 
 ## The Problem It Solves
 
-If you have dozens of decks, collection review is usually fast and high-level. In that mode, it is easy to miss that specific decks are no longer producing new cards.
+If you have dozens of decks, you usually do not click into each deck just to check whether it is still showing new cards. You study what is in front of you and move on.
 
-The alternative is checking decks one-by-one in the browser, which is slow and tedious in large collections.
+That means a deck can silently stall: it stops showing new cards (because its new limit is `0/day`, or because there are `0` unsuspended new cards left), and you only notice much later.
 
-This add-on gives you one focused report so you can spot stalled decks quickly and decide what to unsuspend next.
+The alternative is checking decks one-by-one via the Decks screen, Options, or Browse, which is slow in large collections.
+
+This add-on gives you one focused report so you can spot stalled decks quickly and decide what to unsuspend or adjust next.
 
 ## What You See
 
