@@ -4,8 +4,6 @@ Anki add-on for people with many too many decks who want to keep track of which 
 
 AnkiWeb: https://ankiweb.net/shared/info/1630214543
 
-![Notify Empty Decks report](report-screenshot.png)
-
 ## Who This Is For
 
 This is mainly useful if:
@@ -21,33 +19,46 @@ If that sounds familiar, this add-on helps you catch "silent" deck exhaustion qu
 
 If you have dozens of decks, you usually do not click into each deck just to check whether it is still showing new cards. You study what is in front of you and move on.
 
-That means a deck can silently stall: it stops showing new cards (because its new limit is `0/day`, or because there are `0` unsuspended new cards left), and you only notice much later.
+That means a deck can silently stall: it stops showing new cards because its new limit is `0/day`, or because there are `0` unsuspended new cards left, and you only notice much later.
 
 The alternative is checking decks one-by-one via the Decks screen, Options, or Browse, which is slow in large collections.
 
-This add-on gives you one focused report so you can spot stalled decks quickly and decide what to unsuspend or adjust next.
+This add-on surfaces the problem right in the deck list, so you notice it where you already work.
 
 ## What You See
 
-Open `Tools -> Find Empty New-Card Decks`.
+On the main Decks screen, included decks get a warning badge when they are in one of these states:
 
-You get a deck report with:
+- `0/day (limits)`
+- `0 available (unsuspended)`
 
-- Tree structure (parents + children).
-- Status labels:
-  - `0/day (limits)`
-  - `0 available (unsuspended)`
-  - `Has new cards`
-- Columns for `New/day`, `Unsuspended new`, and `Suspended new`.
-- Sortable columns.
-- Name filtering that keeps parent context visible (non-matching context rows are muted gray).
+Hover a badge to see which condition triggered it.
+
+Open `Tools -> Notify Empty Decks Settings` to control which decks are monitored.
+
+- Filtered decks are always ignored.
+- Include and exclude rules are matched against the full deck name.
+- Wildcard mode supports `*` and `?`.
+- Regex mode uses case-insensitive Python regular expressions.
 
 ## Typical Workflow
 
 1. Study as usual.
-2. Open this report when planning what to unsuspend next.
-3. Check decks marked `0/day (limits)` or `0 available (unsuspended)`.
+2. Notice a badge beside a deck that has stalled.
+3. Hover the badge to see whether the blocker is limits or availability.
 4. Unsuspend the next deck in your pipeline when needed.
+
+## Configuration Examples
+
+Wildcard mode:
+
+- Include `Languages*` to monitor a whole subtree.
+- Exclude `*::Archive` to skip archive decks.
+
+Regex mode:
+
+- Include `^Languages($|::)` to monitor `Languages` and all children.
+- Exclude `::Suspended$` to ignore decks whose names end with `::Suspended`.
 
 ## Install (From Source)
 
@@ -59,4 +70,4 @@ You get a deck report with:
 ## Notes
 
 - Works in Anki's Qt6/PyQt6 environment (Anki 25.x).
-- Advanced options are available in `config.json`, but most users can use the add-on without editing config manually.
+- Settings are stored in `config.json`.
