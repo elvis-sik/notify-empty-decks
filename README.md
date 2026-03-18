@@ -41,7 +41,7 @@ Open `Tools -> Notify Empty Decks Settings` to control which decks are monitored
 - Include and exclude rules are matched against the full deck name.
 - Wildcard mode supports `*` and `?`.
 - Regex mode uses case-insensitive Python regular expressions.
-- Container decks can summarize children, hide their own icons, or disable parent aggregation entirely.
+- Parent/container rows can use explicit `any` or `all` descendant logic, hide their own icons, or disable parent aggregation entirely.
 
 ## Typical Workflow
 
@@ -62,9 +62,10 @@ Regex mode:
 - Include `^Languages($|::)` to monitor `Languages` and all children.
 - Exclude `::Suspended$` to ignore decks whose names end with `::Suspended`.
 
-Container deck modes:
+Parent/container row modes:
 
-- `Summarize children`: container rows can show badges based on included descendants.
+- `Any blocked descendant`: a parent/container row gets a badge if any included descendant deck is blocked.
+- `All included descendants blocked`: a parent/container row only gets a badge if every included descendant deck is blocked.
 - `Hide container icons`: only descendant deck rows show badges.
 - `Direct decks only`: each row only reflects its own direct cards.
 

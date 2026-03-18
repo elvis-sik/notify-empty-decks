@@ -24,18 +24,20 @@ from aqt.utils import showInfo
 
 ADDON_DIR = os.path.dirname(__file__)
 CONFIG_PATH = os.path.join(ADDON_DIR, "config.json")
-ADDON_VERSION = "0.3.0"
+ADDON_VERSION = "0.4.0"
 
 STATUS_LIMITS = "limits"
 STATUS_AVAIL = "availability"
 STATUS_NORMAL = "normal"
 
-CONTAINER_MODE_AGGREGATE = "aggregate_children"
+CONTAINER_MODE_ANY = "any_blocked_descendant"
+CONTAINER_MODE_ALL = "all_included_descendants_blocked"
 CONTAINER_MODE_HIDE = "hide_container_rows"
 CONTAINER_MODE_DIRECT = "direct_decks_only"
 
 CONTAINER_MODE_CHOICES = [
-    (CONTAINER_MODE_AGGREGATE, "Summarize children"),
+    (CONTAINER_MODE_ANY, "Any blocked descendant"),
+    (CONTAINER_MODE_ALL, "All included descendants blocked"),
     (CONTAINER_MODE_HIDE, "Hide container icons"),
     (CONTAINER_MODE_DIRECT, "Direct decks only"),
 ]
@@ -78,7 +80,7 @@ DEFAULT_CONFIG = {
     "use_regex_patterns": False,
     "include_patterns": [],
     "exclude_patterns": [],
-    "container_deck_mode": CONTAINER_MODE_AGGREGATE,
+    "container_deck_mode": CONTAINER_MODE_ANY,
 }
 
 _menu_action: Optional[QAction] = None
@@ -97,7 +99,11 @@ class DeckInfo:
     suspended_new: int
     self_status: str
     is_container: bool = False
+    has_children: bool = False
     monitored: bool = False
+    direct_status: Optional[str] = None
+    descendant_status: Optional[str] = None
+    has_monitored_descendants: bool = False
     agg_status: Optional[str] = None
     agg_unsuspended_new: int = 0
     agg_suspended_new: int = 0
@@ -117,9 +123,11 @@ def _load_config() -> dict:
     config["use_regex_patterns"] = bool(config.get("use_regex_patterns", False))
     config["include_patterns"] = _normalize_pattern_list(config.get("include_patterns", []))
     config["exclude_patterns"] = _normalize_pattern_list(config.get("exclude_patterns", []))
-    container_mode = str(config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE))
+    container_mode = str(config.get("container_deck_mode", CONTAINER_MODE_ANY))
+    if container_mode == "aggregate_children":
+        container_mode = CONTAINER_MODE_ANY
     if container_mode not in {choice[0] for choice in CONTAINER_MODE_CHOICES}:
-        container_mode = CONTAINER_MODE_AGGREGATE
+        container_mode = CONTAINER_MODE_ANY
     config["container_deck_mode"] = container_mode
     return config
 
@@ -371,31 +379,48 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
             parents.add(parent)
             parent = _parent_name(parent)
     for name, info in info_by_name.items():
+        info.has_children = name in parents
         info.is_container = info.total_cards == 0 and name in parents
 
     return info_by_name, deck_names
 
 
 def _apply_monitoring(info_by_name: Dict[str, DeckInfo], deck_names: List[str], config: dict) -> None:
-    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_ANY)
     agg_unsuspended: Dict[str, int] = {}
     agg_suspended: Dict[str, int] = {}
-    agg_has_monitored: Dict[str, bool] = {}
-    agg_has_limits: Dict[str, bool] = {}
+    subtree_monitored_counts: Dict[str, int] = {}
+    subtree_problem_counts: Dict[str, int] = {}
+    subtree_any_limits: Dict[str, bool] = {}
+    subtree_any_avail: Dict[str, bool] = {}
+    descendant_monitored_counts: Dict[str, int] = {}
+    descendant_problem_counts: Dict[str, int] = {}
+    descendant_any_limits: Dict[str, bool] = {}
+    descendant_any_avail: Dict[str, bool] = {}
 
     for name, info in info_by_name.items():
         info.monitored = _should_monitor_deck(info, config)
+        info.direct_status = info.self_status if info.monitored and not info.is_container else None
+        info.descendant_status = None
+        info.has_monitored_descendants = False
         agg_unsuspended[name] = info.unsuspended_new if info.monitored else 0
         agg_suspended[name] = info.suspended_new if info.monitored else 0
-        agg_has_monitored[name] = info.monitored
-        agg_has_limits[name] = info.monitored and info.self_status == STATUS_LIMITS
+        direct_problem = info.direct_status in (STATUS_LIMITS, STATUS_AVAIL)
+        subtree_monitored_counts[name] = 1 if info.monitored and not info.is_container else 0
+        subtree_problem_counts[name] = 1 if direct_problem else 0
+        subtree_any_limits[name] = info.direct_status == STATUS_LIMITS
+        subtree_any_avail[name] = info.direct_status == STATUS_AVAIL
+        descendant_monitored_counts[name] = 0
+        descendant_problem_counts[name] = 0
+        descendant_any_limits[name] = False
+        descendant_any_avail[name] = False
 
     if container_mode == CONTAINER_MODE_DIRECT:
         for name, info in info_by_name.items():
-            info.agg_has_monitored = agg_has_monitored.get(name, False)
+            info.agg_has_monitored = subtree_monitored_counts.get(name, 0) > 0
             info.agg_unsuspended_new = agg_unsuspended.get(name, 0)
             info.agg_suspended_new = agg_suspended.get(name, 0)
-            info.agg_status = info.self_status if info.agg_has_monitored else None
+            info.agg_status = info.direct_status
         return
 
     for name in sorted(deck_names, key=lambda item: item.count("::"), reverse=True):
@@ -404,66 +429,171 @@ def _apply_monitoring(info_by_name: Dict[str, DeckInfo], deck_names: List[str], 
             continue
         agg_unsuspended[parent] = agg_unsuspended.get(parent, 0) + agg_unsuspended.get(name, 0)
         agg_suspended[parent] = agg_suspended.get(parent, 0) + agg_suspended.get(name, 0)
-        agg_has_monitored[parent] = agg_has_monitored.get(parent, False) or agg_has_monitored.get(
+        descendant_monitored_counts[parent] += subtree_monitored_counts.get(name, 0)
+        descendant_problem_counts[parent] += subtree_problem_counts.get(name, 0)
+        descendant_any_limits[parent] = descendant_any_limits.get(parent, False) or subtree_any_limits.get(
             name, False
         )
-        agg_has_limits[parent] = agg_has_limits.get(parent, False) or agg_has_limits.get(
+        descendant_any_avail[parent] = descendant_any_avail.get(parent, False) or subtree_any_avail.get(
+            name, False
+        )
+        subtree_monitored_counts[parent] += subtree_monitored_counts.get(name, 0)
+        subtree_problem_counts[parent] += subtree_problem_counts.get(name, 0)
+        subtree_any_limits[parent] = subtree_any_limits.get(parent, False) or subtree_any_limits.get(
+            name, False
+        )
+        subtree_any_avail[parent] = subtree_any_avail.get(parent, False) or subtree_any_avail.get(
             name, False
         )
 
     for name, info in info_by_name.items():
-        info.agg_has_monitored = agg_has_monitored.get(name, False)
+        info.has_monitored_descendants = descendant_monitored_counts.get(name, 0) > 0
+        info.agg_has_monitored = subtree_monitored_counts.get(name, 0) > 0
         info.agg_unsuspended_new = agg_unsuspended.get(name, 0)
         info.agg_suspended_new = agg_suspended.get(name, 0)
 
-        if not info.agg_has_monitored:
-            info.agg_status = None
-        elif agg_has_limits.get(name, False):
+        if container_mode in {CONTAINER_MODE_ANY, CONTAINER_MODE_HIDE}:
+            if descendant_any_limits.get(name, False):
+                info.descendant_status = STATUS_LIMITS
+            elif descendant_any_avail.get(name, False):
+                info.descendant_status = STATUS_AVAIL
+        elif container_mode == CONTAINER_MODE_ALL:
+            descendant_monitored = descendant_monitored_counts.get(name, 0)
+            descendant_problematic = descendant_problem_counts.get(name, 0)
+            if descendant_monitored > 0 and descendant_monitored == descendant_problematic:
+                if descendant_any_limits.get(name, False):
+                    info.descendant_status = STATUS_LIMITS
+                elif descendant_any_avail.get(name, False):
+                    info.descendant_status = STATUS_AVAIL
+
+        if info.direct_status == STATUS_LIMITS or info.descendant_status == STATUS_LIMITS:
             info.agg_status = STATUS_LIMITS
-        elif info.agg_unsuspended_new <= 0:
+        elif info.direct_status == STATUS_AVAIL or info.descendant_status == STATUS_AVAIL:
             info.agg_status = STATUS_AVAIL
         else:
-            info.agg_status = STATUS_NORMAL
+            info.agg_status = None
 
 
 def _should_show_badge(info: DeckInfo, config: dict) -> bool:
-    if not info.monitored or not _is_problematic(info):
+    if not _is_problematic(info):
         return False
-    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_ANY)
     if info.is_container and container_mode in {CONTAINER_MODE_HIDE, CONTAINER_MODE_DIRECT}:
         return False
     return True
 
 
 def _badge_tooltip(info: DeckInfo, config: dict) -> str:
-    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_ANY)
     if container_mode == CONTAINER_MODE_DIRECT:
-        if info.agg_status == STATUS_LIMITS:
+        if info.direct_status == STATUS_LIMITS:
             return (
                 "This deck is blocked by a 0/day new-card limit. "
-                f"Unsuspended new: {info.agg_unsuspended_new}. "
-                f"Suspended new: {info.agg_suspended_new}."
+                f"Unsuspended new: {info.unsuspended_new}. "
+                f"Suspended new: {info.suspended_new}."
             )
         return (
             "This deck has 0 unsuspended new cards available. "
-            f"Suspended new: {info.agg_suspended_new}."
+            f"Suspended new: {info.suspended_new}."
+        )
+
+    if container_mode in {CONTAINER_MODE_ANY, CONTAINER_MODE_HIDE}:
+        if info.is_container:
+            if info.agg_status == STATUS_LIMITS:
+                return (
+                    "At least one included child deck under this container is blocked by a "
+                    "0/day new-card limit. "
+                    f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+                    f"Suspended new in the included subtree: {info.agg_suspended_new}."
+                )
+            return (
+                "At least one included child deck under this container has 0 unsuspended "
+                "new cards available. "
+                f"Suspended new in the included subtree: {info.agg_suspended_new}."
+            )
+        if info.direct_status and info.descendant_status:
+            if info.agg_status == STATUS_LIMITS:
+                return (
+                    "This deck or at least one included child deck is blocked by a 0/day "
+                    "new-card limit. "
+                    f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+                    f"Suspended new in the included subtree: {info.agg_suspended_new}."
+                )
+            return (
+                "This deck or at least one included child deck has 0 unsuspended new cards "
+                "available. "
+                f"Suspended new in the included subtree: {info.agg_suspended_new}."
+            )
+        if info.direct_status == STATUS_LIMITS:
+            return (
+                "This deck is blocked by a 0/day new-card limit. "
+                f"Unsuspended new: {info.unsuspended_new}. "
+                f"Suspended new: {info.suspended_new}."
+            )
+        if info.direct_status == STATUS_AVAIL:
+            return (
+                "This deck has 0 unsuspended new cards available. "
+                f"Suspended new: {info.suspended_new}."
+            )
+        if info.descendant_status == STATUS_LIMITS:
+            return (
+                "At least one included child deck is blocked by a 0/day new-card limit. "
+                f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+                f"Suspended new in the included subtree: {info.agg_suspended_new}."
+            )
+        return (
+            "At least one included child deck has 0 unsuspended new cards available. "
+            f"Suspended new in the included subtree: {info.agg_suspended_new}."
         )
 
     if info.is_container:
-        limits_prefix = "Included child decks under this container are blocked by a 0/day new-card limit. "
-        availability_prefix = (
-            "Included child decks under this container have 0 unsuspended new cards available. "
+        if info.agg_status == STATUS_LIMITS:
+            return (
+                "All included child decks under this container are blocked, and at least "
+                "one of them is blocked by a 0/day new-card limit. "
+                f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+                f"Suspended new in the included subtree: {info.agg_suspended_new}."
+            )
+        return (
+            "All included child decks under this container have 0 unsuspended new cards "
+            "available. "
+            f"Suspended new in the included subtree: {info.agg_suspended_new}."
         )
-    else:
-        limits_prefix = "This deck or an included child deck is blocked by a 0/day new-card limit. "
-        availability_prefix = "This deck or an included child deck has 0 unsuspended new cards available. "
+    if info.direct_status and info.descendant_status:
+        if info.agg_status == STATUS_LIMITS:
+            return (
+                "This deck is blocked, and all included child decks are also blocked; at "
+                "least one of them is blocked by a 0/day new-card limit. "
+                f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+                f"Suspended new in the included subtree: {info.agg_suspended_new}."
+            )
+        return (
+            "This deck is blocked, and all included child decks also have 0 unsuspended "
+            "new cards available. "
+            f"Suspended new in the included subtree: {info.agg_suspended_new}."
+        )
+    if info.direct_status == STATUS_LIMITS:
+        return (
+            "This deck is blocked by a 0/day new-card limit. "
+            f"Unsuspended new: {info.unsuspended_new}. "
+            f"Suspended new: {info.suspended_new}."
+        )
+    if info.direct_status == STATUS_AVAIL:
+        return (
+            "This deck has 0 unsuspended new cards available. "
+            f"Suspended new: {info.suspended_new}."
+        )
     if info.agg_status == STATUS_LIMITS:
-        return limits_prefix + (
-            f"Unsuspended new: {info.agg_unsuspended_new}. "
-            f"Suspended new: {info.agg_suspended_new}."
+        return (
+            "All included child decks are blocked, and at least one of them is blocked by "
+            "a 0/day new-card limit. "
+            f"Unsuspended new in the included subtree: {info.agg_unsuspended_new}. "
+            f"Suspended new in the included subtree: {info.agg_suspended_new}."
         )
-
-    return availability_prefix + f"Suspended new: {info.agg_suspended_new}."
+    return (
+        "All included child decks have 0 unsuspended new cards available. "
+        f"Suspended new in the included subtree: {info.agg_suspended_new}."
+    )
 
 
 def _render_badge_html(info: DeckInfo, config: dict) -> str:
@@ -538,9 +668,14 @@ def _update_pattern_mode_help(dialog: QDialog) -> None:
 
 def _update_container_mode_help(dialog: QDialog) -> None:
     mode = dialog.container_mode_combo.currentData()
-    if mode == CONTAINER_MODE_AGGREGATE:
+    if mode == CONTAINER_MODE_ANY:
         dialog.container_mode_help.setText(
-            "Container rows can show badges that summarize included descendant decks."
+            "A parent/container row shows a badge if any included descendant deck is blocked."
+        )
+    elif mode == CONTAINER_MODE_ALL:
+        dialog.container_mode_help.setText(
+            "A parent/container row only shows a badge when all included descendant decks "
+            "are blocked."
         )
     elif mode == CONTAINER_MODE_HIDE:
         dialog.container_mode_help.setText(
@@ -601,7 +736,7 @@ def _build_settings_dialog() -> QDialog:
     dialog.container_mode_combo = QComboBox()
     for value, label in CONTAINER_MODE_CHOICES:
         dialog.container_mode_combo.addItem(label, value)
-    form.addRow("Container decks", dialog.container_mode_combo)
+    form.addRow("Parent/container rows", dialog.container_mode_combo)
 
     dialog.include_edit = QPlainTextEdit()
     dialog.include_edit.setTabChangesFocus(True)
