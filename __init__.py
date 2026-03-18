@@ -97,6 +97,7 @@ class DeckInfo:
     limit_source: str
     unsuspended_new: int
     suspended_new: int
+    effective_new_count: int
     self_status: str
     is_container: bool = False
     has_children: bool = False
@@ -288,8 +289,34 @@ def _count_total_cards(did: int) -> int:
         return 0
 
 
-def _compute_self_status(new_limit: Optional[int], unsuspended_new: int) -> str:
-    if new_limit is not None and new_limit <= 0:
+def _build_effective_new_count_map() -> Dict[int, int]:
+    counts: Dict[int, int] = {}
+
+    def visit(node) -> None:
+        deck_id = getattr(node, "deck_id", None)
+        if deck_id is not None:
+            try:
+                counts[int(deck_id)] = int(getattr(node, "new_count", 0) or 0)
+            except Exception:
+                pass
+        for child in getattr(node, "children", []) or []:
+            visit(child)
+
+    try:
+        tree = mw.col.sched.deck_due_tree()
+    except Exception:
+        return counts
+
+    visit(tree)
+    return counts
+
+
+def _compute_self_status(
+    new_limit: Optional[int], unsuspended_new: int, effective_new_count: int
+) -> str:
+    if effective_new_count > 0:
+        return STATUS_NORMAL
+    if new_limit is not None and new_limit <= 0 and unsuspended_new > 0:
         return STATUS_LIMITS
     if unsuspended_new <= 0:
         return STATUS_AVAIL
@@ -304,6 +331,7 @@ def _parent_name(deck_name: str) -> Optional[str]:
 
 def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
     decks_manager = mw.col.decks
+    effective_new_counts = _build_effective_new_count_map()
     deck_items = []
     all_names = getattr(decks_manager, "all_names_and_ids", None)
     if callable(all_names):
@@ -358,6 +386,7 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
         new_limit, limit_source = _get_config_new_limit(did)
         unsuspended_new = _count_new_cards(did, suspended=False)
         suspended_new = _count_new_cards(did, suspended=True)
+        effective_new_count = effective_new_counts.get(int(did), 0)
 
         info_by_name[name] = DeckInfo(
             did=did,
@@ -368,7 +397,8 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
             limit_source=limit_source,
             unsuspended_new=unsuspended_new,
             suspended_new=suspended_new,
-            self_status=_compute_self_status(new_limit, unsuspended_new),
+            effective_new_count=effective_new_count,
+            self_status=_compute_self_status(new_limit, unsuspended_new, effective_new_count),
         )
         deck_names.append(name)
 
