@@ -12,6 +12,7 @@ from aqt import gui_hooks, mw
 from aqt.qt import (
     QAction,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -23,11 +24,21 @@ from aqt.utils import showInfo
 
 ADDON_DIR = os.path.dirname(__file__)
 CONFIG_PATH = os.path.join(ADDON_DIR, "config.json")
-ADDON_VERSION = "0.2.0"
+ADDON_VERSION = "0.3.0"
 
 STATUS_LIMITS = "limits"
 STATUS_AVAIL = "availability"
 STATUS_NORMAL = "normal"
+
+CONTAINER_MODE_AGGREGATE = "aggregate_children"
+CONTAINER_MODE_HIDE = "hide_container_rows"
+CONTAINER_MODE_DIRECT = "direct_decks_only"
+
+CONTAINER_MODE_CHOICES = [
+    (CONTAINER_MODE_AGGREGATE, "Summarize children"),
+    (CONTAINER_MODE_HIDE, "Hide container icons"),
+    (CONTAINER_MODE_DIRECT, "Direct decks only"),
+]
 
 BADGE_STYLE = """
 <style>
@@ -67,6 +78,7 @@ DEFAULT_CONFIG = {
     "use_regex_patterns": False,
     "include_patterns": [],
     "exclude_patterns": [],
+    "container_deck_mode": CONTAINER_MODE_AGGREGATE,
 }
 
 _menu_action: Optional[QAction] = None
@@ -84,6 +96,7 @@ class DeckInfo:
     unsuspended_new: int
     suspended_new: int
     self_status: str
+    is_container: bool = False
     monitored: bool = False
     agg_status: Optional[str] = None
     agg_unsuspended_new: int = 0
@@ -104,6 +117,10 @@ def _load_config() -> dict:
     config["use_regex_patterns"] = bool(config.get("use_regex_patterns", False))
     config["include_patterns"] = _normalize_pattern_list(config.get("include_patterns", []))
     config["exclude_patterns"] = _normalize_pattern_list(config.get("exclude_patterns", []))
+    container_mode = str(config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE))
+    if container_mode not in {choice[0] for choice in CONTAINER_MODE_CHOICES}:
+        container_mode = CONTAINER_MODE_AGGREGATE
+    config["container_deck_mode"] = container_mode
     return config
 
 
@@ -347,10 +364,20 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
         )
         deck_names.append(name)
 
+    parents = set()
+    for name in deck_names:
+        parent = _parent_name(name)
+        while parent:
+            parents.add(parent)
+            parent = _parent_name(parent)
+    for name, info in info_by_name.items():
+        info.is_container = info.total_cards == 0 and name in parents
+
     return info_by_name, deck_names
 
 
 def _apply_monitoring(info_by_name: Dict[str, DeckInfo], deck_names: List[str], config: dict) -> None:
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
     agg_unsuspended: Dict[str, int] = {}
     agg_suspended: Dict[str, int] = {}
     agg_has_monitored: Dict[str, bool] = {}
@@ -362,6 +389,14 @@ def _apply_monitoring(info_by_name: Dict[str, DeckInfo], deck_names: List[str], 
         agg_suspended[name] = info.suspended_new if info.monitored else 0
         agg_has_monitored[name] = info.monitored
         agg_has_limits[name] = info.monitored and info.self_status == STATUS_LIMITS
+
+    if container_mode == CONTAINER_MODE_DIRECT:
+        for name, info in info_by_name.items():
+            info.agg_has_monitored = agg_has_monitored.get(name, False)
+            info.agg_unsuspended_new = agg_unsuspended.get(name, 0)
+            info.agg_suspended_new = agg_suspended.get(name, 0)
+            info.agg_status = info.self_status if info.agg_has_monitored else None
+        return
 
     for name in sorted(deck_names, key=lambda item: item.count("::"), reverse=True):
         parent = _parent_name(name)
@@ -391,29 +426,55 @@ def _apply_monitoring(info_by_name: Dict[str, DeckInfo], deck_names: List[str], 
             info.agg_status = STATUS_NORMAL
 
 
-def _badge_tooltip(info: DeckInfo) -> str:
-    if info.agg_status == STATUS_LIMITS:
+def _should_show_badge(info: DeckInfo, config: dict) -> bool:
+    if not info.monitored or not _is_problematic(info):
+        return False
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
+    if info.is_container and container_mode in {CONTAINER_MODE_HIDE, CONTAINER_MODE_DIRECT}:
+        return False
+    return True
+
+
+def _badge_tooltip(info: DeckInfo, config: dict) -> str:
+    container_mode = config.get("container_deck_mode", CONTAINER_MODE_AGGREGATE)
+    if container_mode == CONTAINER_MODE_DIRECT:
+        if info.agg_status == STATUS_LIMITS:
+            return (
+                "This deck is blocked by a 0/day new-card limit. "
+                f"Unsuspended new: {info.agg_unsuspended_new}. "
+                f"Suspended new: {info.agg_suspended_new}."
+            )
         return (
-            "Included decks in this subtree are blocked by a 0/day new-card limit. "
+            "This deck has 0 unsuspended new cards available. "
+            f"Suspended new: {info.agg_suspended_new}."
+        )
+
+    if info.is_container:
+        limits_prefix = "Included child decks under this container are blocked by a 0/day new-card limit. "
+        availability_prefix = (
+            "Included child decks under this container have 0 unsuspended new cards available. "
+        )
+    else:
+        limits_prefix = "This deck or an included child deck is blocked by a 0/day new-card limit. "
+        availability_prefix = "This deck or an included child deck has 0 unsuspended new cards available. "
+    if info.agg_status == STATUS_LIMITS:
+        return limits_prefix + (
             f"Unsuspended new: {info.agg_unsuspended_new}. "
             f"Suspended new: {info.agg_suspended_new}."
         )
 
-    return (
-        "Included decks in this subtree have 0 unsuspended new cards available. "
-        f"Suspended new: {info.agg_suspended_new}."
-    )
+    return availability_prefix + f"Suspended new: {info.agg_suspended_new}."
 
 
-def _render_badge_html(info: DeckInfo) -> str:
+def _render_badge_html(info: DeckInfo, config: dict) -> str:
     if info.agg_status == STATUS_LIMITS:
         badge_class = "notify-empty-decks-badge notify-empty-decks-badge-limits"
-        label = "Included decks blocked by a 0/day limit"
+        label = "0/day new-card limit"
     else:
         badge_class = "notify-empty-decks-badge notify-empty-decks-badge-availability"
-        label = "Included decks have no unsuspended new cards"
+        label = "No unsuspended new cards available"
 
-    tooltip = escape(_badge_tooltip(info), quote=True)
+    tooltip = escape(_badge_tooltip(info, config), quote=True)
     aria_label = escape(label, quote=True)
     return f'<span class="{badge_class}" title="{tooltip}" aria-label="{aria_label}">!</span>'
 
@@ -440,9 +501,9 @@ def _decorate_deck_browser(deck_browser, content) -> None:
     _apply_monitoring(info_by_name, deck_names, config)
 
     badges_by_did = {
-        info.did: _render_badge_html(info)
+        info.did: _render_badge_html(info, config)
         for info in info_by_name.values()
-        if info.monitored and _is_problematic(info)
+        if _should_show_badge(info, config)
     }
     if not badges_by_did:
         return
@@ -475,6 +536,22 @@ def _update_pattern_mode_help(dialog: QDialog) -> None:
         dialog.exclude_edit.setPlaceholderText("*Archive*\n*::Suspended")
 
 
+def _update_container_mode_help(dialog: QDialog) -> None:
+    mode = dialog.container_mode_combo.currentData()
+    if mode == CONTAINER_MODE_AGGREGATE:
+        dialog.container_mode_help.setText(
+            "Container rows can show badges that summarize included descendant decks."
+        )
+    elif mode == CONTAINER_MODE_HIDE:
+        dialog.container_mode_help.setText(
+            "Container rows stay quiet, but included descendant decks can still show badges."
+        )
+    else:
+        dialog.container_mode_help.setText(
+            "Only a deck's own direct cards are considered. Descendant decks do not affect parents."
+        )
+
+
 def _save_settings(dialog: QDialog) -> None:
     config = _load_config()
     use_regex = dialog.use_regex_checkbox.isChecked()
@@ -494,6 +571,7 @@ def _save_settings(dialog: QDialog) -> None:
     config["use_regex_patterns"] = use_regex
     config["include_patterns"] = include_patterns
     config["exclude_patterns"] = exclude_patterns
+    config["container_deck_mode"] = dialog.container_mode_combo.currentData()
     _save_config(config)
     _refresh_deck_browser()
     dialog.close()
@@ -520,6 +598,11 @@ def _build_settings_dialog() -> QDialog:
     dialog.use_regex_checkbox = QCheckBox("Use regular expressions")
     form.addRow("Pattern mode", dialog.use_regex_checkbox)
 
+    dialog.container_mode_combo = QComboBox()
+    for value, label in CONTAINER_MODE_CHOICES:
+        dialog.container_mode_combo.addItem(label, value)
+    form.addRow("Container decks", dialog.container_mode_combo)
+
     dialog.include_edit = QPlainTextEdit()
     dialog.include_edit.setTabChangesFocus(True)
     dialog.include_edit.setFixedHeight(110)
@@ -534,6 +617,10 @@ def _build_settings_dialog() -> QDialog:
     dialog.mode_help.setWordWrap(True)
     form.addRow("", dialog.mode_help)
 
+    dialog.container_mode_help = QLabel()
+    dialog.container_mode_help.setWordWrap(True)
+    form.addRow("", dialog.container_mode_help)
+
     layout.addLayout(form)
 
     buttons = QDialogButtonBox(
@@ -544,6 +631,9 @@ def _build_settings_dialog() -> QDialog:
     layout.addWidget(buttons)
 
     dialog.use_regex_checkbox.toggled.connect(lambda _: _update_pattern_mode_help(dialog))
+    dialog.container_mode_combo.currentIndexChanged.connect(
+        lambda _: _update_container_mode_help(dialog)
+    )
     return dialog
 
 
@@ -558,9 +648,13 @@ def _show_settings() -> None:
     config = _load_config()
     _settings_dialog.setWindowTitle(f"Notify Empty Decks Settings (v{ADDON_VERSION})")
     _settings_dialog.use_regex_checkbox.setChecked(bool(config.get("use_regex_patterns", False)))
+    index = _settings_dialog.container_mode_combo.findData(config.get("container_deck_mode"))
+    if index >= 0:
+        _settings_dialog.container_mode_combo.setCurrentIndex(index)
     _settings_dialog.include_edit.setPlainText("\n".join(config.get("include_patterns", [])))
     _settings_dialog.exclude_edit.setPlainText("\n".join(config.get("exclude_patterns", [])))
     _update_pattern_mode_help(_settings_dialog)
+    _update_container_mode_help(_settings_dialog)
     _settings_dialog.resize(560, 420)
     _settings_dialog.show()
     _settings_dialog.raise_()

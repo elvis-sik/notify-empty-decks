@@ -1,5 +1,6 @@
 {
   "use_regex_patterns": false,
   "include_patterns": [],
-  "exclude_patterns": []
+  "exclude_patterns": [],
+  "container_deck_mode": "aggregate_children"
 }
