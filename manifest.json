@@ -1,10 +1,10 @@
 {
   "name": "Notify Empty Decks",
-  "mod": 1773964800,
+  "mod": 1774047600,
   "min_anki_version": "2.1.55",
   "max_anki_version": "2.1.*",
   "author": "",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Show deck-list warning badges for decks that have run out of new cards.",
   "homepage": ""
 }

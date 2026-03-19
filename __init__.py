@@ -24,7 +24,7 @@ from aqt.utils import showInfo
 
 ADDON_DIR = os.path.dirname(__file__)
 CONFIG_PATH = os.path.join(ADDON_DIR, "config.json")
-ADDON_VERSION = "0.4.0"
+ADDON_VERSION = "0.5.0"
 
 STATUS_LIMITS = "limits"
 STATUS_AVAIL = "availability"
@@ -81,6 +81,7 @@ DEFAULT_CONFIG = {
     "include_patterns": [],
     "exclude_patterns": [],
     "container_deck_mode": CONTAINER_MODE_ANY,
+    "fractional_scheduler_health_override": False,
 }
 
 _menu_action: Optional[QAction] = None
@@ -124,6 +125,9 @@ def _load_config() -> dict:
     config["use_regex_patterns"] = bool(config.get("use_regex_patterns", False))
     config["include_patterns"] = _normalize_pattern_list(config.get("include_patterns", []))
     config["exclude_patterns"] = _normalize_pattern_list(config.get("exclude_patterns", []))
+    config["fractional_scheduler_health_override"] = bool(
+        config.get("fractional_scheduler_health_override", False)
+    )
     container_mode = str(config.get("container_deck_mode", CONTAINER_MODE_ANY))
     if container_mode == "aggregate_children":
         container_mode = CONTAINER_MODE_ANY
@@ -311,6 +315,33 @@ def _build_effective_new_count_map() -> Dict[int, int]:
     return counts
 
 
+def _get_fractional_schedule_health_snapshot(config: dict) -> Dict[int, object]:
+    if not config.get("fractional_scheduler_health_override", False):
+        return {}
+    if not mw or not mw.col:
+        return {}
+
+    api = getattr(mw, "fractional_scheduler_api", None)
+    getter = getattr(api, "get_schedule_health_snapshot", None)
+    if not callable(getter):
+        return {}
+
+    try:
+        snapshot = getter(mw.col)
+    except Exception:
+        return {}
+
+    if not isinstance(snapshot, dict):
+        return {}
+    return snapshot
+
+
+def _fractional_snapshot_is_future_positive(entry: object) -> bool:
+    if isinstance(entry, dict):
+        return bool(entry.get("has_future_positive_limit", False))
+    return bool(getattr(entry, "has_future_positive_limit", False))
+
+
 def _compute_self_status(
     new_limit: Optional[int], unsuspended_new: int, effective_new_count: int
 ) -> str:
@@ -329,9 +360,10 @@ def _parent_name(deck_name: str) -> Optional[str]:
     return deck_name.rsplit("::", 1)[0]
 
 
-def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
+def _build_deck_info(config: dict) -> Tuple[Dict[str, DeckInfo], List[str]]:
     decks_manager = mw.col.decks
     effective_new_counts = _build_effective_new_count_map()
+    fractional_health = _get_fractional_schedule_health_snapshot(config)
     deck_items = []
     all_names = getattr(decks_manager, "all_names_and_ids", None)
     if callable(all_names):
@@ -387,6 +419,11 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
         unsuspended_new = _count_new_cards(did, suspended=False)
         suspended_new = _count_new_cards(did, suspended=True)
         effective_new_count = effective_new_counts.get(int(did), 0)
+        self_status = _compute_self_status(new_limit, unsuspended_new, effective_new_count)
+        if unsuspended_new > 0 and _fractional_snapshot_is_future_positive(
+            fractional_health.get(int(did))
+        ):
+            self_status = STATUS_NORMAL
 
         info_by_name[name] = DeckInfo(
             did=did,
@@ -398,7 +435,7 @@ def _build_deck_info() -> Tuple[Dict[str, DeckInfo], List[str]]:
             unsuspended_new=unsuspended_new,
             suspended_new=suspended_new,
             effective_new_count=effective_new_count,
-            self_status=_compute_self_status(new_limit, unsuspended_new, effective_new_count),
+            self_status=self_status,
         )
         deck_names.append(name)
 
@@ -654,7 +691,7 @@ def _decorate_deck_browser(deck_browser, content) -> None:
         return
 
     config = _load_config()
-    info_by_name, deck_names = _build_deck_info()
+    info_by_name, deck_names = _build_deck_info(config)
     if not info_by_name:
         return
 
@@ -717,6 +754,19 @@ def _update_container_mode_help(dialog: QDialog) -> None:
         )
 
 
+def _update_fractional_override_help(dialog: QDialog) -> None:
+    if dialog.fractional_override_checkbox.isChecked():
+        dialog.fractional_override_help.setText(
+            "If Fractional Scheduler publishes its API, a deck with unsuspended new cards is "
+            "treated as healthy when its schedule will yield >0 new cards again in a future cycle."
+        )
+    else:
+        dialog.fractional_override_help.setText(
+            "Ignore Fractional Scheduler and use Notify Empty Decks' own limit/availability "
+            "checks only."
+        )
+
+
 def _save_settings(dialog: QDialog) -> None:
     config = _load_config()
     use_regex = dialog.use_regex_checkbox.isChecked()
@@ -737,6 +787,9 @@ def _save_settings(dialog: QDialog) -> None:
     config["include_patterns"] = include_patterns
     config["exclude_patterns"] = exclude_patterns
     config["container_deck_mode"] = dialog.container_mode_combo.currentData()
+    config["fractional_scheduler_health_override"] = (
+        dialog.fractional_override_checkbox.isChecked()
+    )
     _save_config(config)
     _refresh_deck_browser()
     dialog.close()
@@ -768,6 +821,11 @@ def _build_settings_dialog() -> QDialog:
         dialog.container_mode_combo.addItem(label, value)
     form.addRow("Parent/container rows", dialog.container_mode_combo)
 
+    dialog.fractional_override_checkbox = QCheckBox(
+        "Treat fractional-scheduled decks as healthy if they will receive new cards again"
+    )
+    form.addRow("Fractional Scheduler", dialog.fractional_override_checkbox)
+
     dialog.include_edit = QPlainTextEdit()
     dialog.include_edit.setTabChangesFocus(True)
     dialog.include_edit.setFixedHeight(110)
@@ -786,6 +844,10 @@ def _build_settings_dialog() -> QDialog:
     dialog.container_mode_help.setWordWrap(True)
     form.addRow("", dialog.container_mode_help)
 
+    dialog.fractional_override_help = QLabel()
+    dialog.fractional_override_help.setWordWrap(True)
+    form.addRow("", dialog.fractional_override_help)
+
     layout.addLayout(form)
 
     buttons = QDialogButtonBox(
@@ -798,6 +860,9 @@ def _build_settings_dialog() -> QDialog:
     dialog.use_regex_checkbox.toggled.connect(lambda _: _update_pattern_mode_help(dialog))
     dialog.container_mode_combo.currentIndexChanged.connect(
         lambda _: _update_container_mode_help(dialog)
+    )
+    dialog.fractional_override_checkbox.toggled.connect(
+        lambda _: _update_fractional_override_help(dialog)
     )
     return dialog
 
@@ -816,10 +881,14 @@ def _show_settings() -> None:
     index = _settings_dialog.container_mode_combo.findData(config.get("container_deck_mode"))
     if index >= 0:
         _settings_dialog.container_mode_combo.setCurrentIndex(index)
+    _settings_dialog.fractional_override_checkbox.setChecked(
+        bool(config.get("fractional_scheduler_health_override", False))
+    )
     _settings_dialog.include_edit.setPlainText("\n".join(config.get("include_patterns", [])))
     _settings_dialog.exclude_edit.setPlainText("\n".join(config.get("exclude_patterns", [])))
     _update_pattern_mode_help(_settings_dialog)
     _update_container_mode_help(_settings_dialog)
+    _update_fractional_override_help(_settings_dialog)
     _settings_dialog.resize(560, 420)
     _settings_dialog.show()
     _settings_dialog.raise_()

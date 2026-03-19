@@ -2,5 +2,6 @@
   "use_regex_patterns": false,
   "include_patterns": [],
   "exclude_patterns": [],
-  "container_deck_mode": "any_blocked_descendant"
+  "container_deck_mode": "any_blocked_descendant",
+  "fractional_scheduler_health_override": false
 }

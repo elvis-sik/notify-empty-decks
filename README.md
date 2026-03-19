@@ -42,6 +42,7 @@ Open `Tools -> Notify Empty Decks Settings` to control which decks are monitored
 - Wildcard mode supports `*` and `?`.
 - Regex mode uses case-insensitive Python regular expressions.
 - Parent/container rows can use explicit `any` or `all` descendant logic, hide their own icons, or disable parent aggregation entirely.
+- Optional Fractional Scheduler integration can treat decks as healthy when they still have unsuspended new cards and are scheduled to receive `>0` new cards again in a future cycle.
 
 ## Typical Workflow
 
@@ -68,6 +69,11 @@ Parent/container row modes:
 - `All included descendants blocked`: a parent/container row only gets a badge if every included descendant deck is blocked.
 - `Hide container icons`: only descendant deck rows show badges.
 - `Direct decks only`: each row only reflects its own direct cards.
+
+Fractional Scheduler override:
+
+- When enabled, a deck with unsuspended new cards is treated as healthy if the Fractional Scheduler API reports that its repeating schedule will yield `>0` new cards again at some point.
+- This is optional and defaults off.
 
 ## Install (From Source)
 
