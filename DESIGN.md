@@ -1,5 +1,9 @@
 # Notify Empty Decks - Design
 
+Legacy design note for the pre-merge standalone add-on.
+
+The active implementation now lives in `anki-fractional-scheduler`, where notify behavior is configured per schedule rather than through a separate add-on dialog. The details below are preserved mainly as historical reference.
+
 ## Goal
 Help users quickly understand why a deck currently shows no new cards, so they can decide when to unsuspend the next deck in their study pipeline.
 
@@ -71,6 +75,9 @@ Behavior:
 - Refresh button recomputes all values.
 
 ## Notification and Launch
+
+This section describes the old standalone add-on behavior and is no longer current for the merged implementation:
+
 - Manual launch from `Tools -> Find Empty New-Card Decks`.
 - Optional profile-open behavior via config:
   - `notify_never = true`: disable automatic opening.

@@ -3,13 +3,15 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+echo "warning: notify-empty-decks is a legacy standalone add-on; active development moved to anki-fractional-scheduler" >&2
+
 if ! command -v zip >/dev/null 2>&1; then
   echo "error: zip not found (install zip first)" >&2
   exit 1
 fi
 
 out_dir="${1:-"$repo_root/dist"}"
-out_file="${2:-"notify-empty-decks.ankiaddon"}"
+out_file="${2:-"notify-empty-decks-legacy.ankiaddon"}"
 
 mkdir -p "$out_dir"
 tmpdir="$(mktemp -d)"
@@ -32,7 +34,7 @@ done
 
 cat >"$tmpdir/config.json" <<'JSON'
 {
-  "menu_title": "Find Empty New-Card Decks",
+  "menu_title": "Legacy Notify Empty Decks",
   "show_when_profile_opens": false,
   "notify_every_n_days": 0,
   "notify_never": true,
@@ -52,4 +54,3 @@ rm -f "$out_path"
 (cd "$tmpdir" && zip -qr "$out_path" .)
 zip -T "$out_path" >/dev/null
 echo "$out_path"
-

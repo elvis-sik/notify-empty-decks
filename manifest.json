@@ -5,6 +5,6 @@
   "max_anki_version": "2.1.*",
   "author": "",
   "version": "0.5.0",
-  "description": "Show deck-list warning badges for decks that have run out of new cards.",
+  "description": "Legacy standalone add-on; functionality has been merged into Fractional New-Card Scheduler.",
   "homepage": ""
 }

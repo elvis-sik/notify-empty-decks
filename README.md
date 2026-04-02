@@ -1,8 +1,16 @@
 # Notify Empty Decks
 
-Anki add-on for people with many too many decks who want to keep track of which of their decks still are showing new cards every day.
+Legacy reference repo for the old standalone Notify Empty Decks add-on.
 
-AnkiWeb: https://ankiweb.net/shared/info/1630214543
+This functionality now lives inside `anki-fractional-scheduler`. Notify badges are configured per schedule in `Tools -> Fractional Scheduler: Open Config`, and there is no separate Notify Empty Decks settings window in the merged add-on.
+
+Historical AnkiWeb listing: https://ankiweb.net/shared/info/1630214543
+
+## Status
+
+- This repository is no longer the active add-on.
+- Keep it only for historical reference while the merged implementation settles.
+- Do not symlink or install this repo into Anki alongside the merged fractional scheduler add-on.
 
 ## Who This Is For
 
@@ -34,8 +42,6 @@ On the main Decks screen, included decks get a warning badge when they are in on
 
 Hover a badge to see which condition triggered it.
 
-Open `Tools -> Notify Empty Decks Settings` to control which decks are monitored.
-
 - Filtered decks are always ignored.
 - Hover text explains each icon directly, so there is no legend to memorize.
 - Include and exclude rules are matched against the full deck name.
@@ -50,6 +56,8 @@ Open `Tools -> Notify Empty Decks Settings` to control which decks are monitored
 2. Notice a badge beside a deck that has stalled.
 3. Hover the badge to see whether the blocker is limits or availability.
 4. Unsuspend the next deck in your pipeline when needed.
+
+In the merged add-on, you configure this behavior inside the Fractional Scheduler schedule editor instead of a separate dialog.
 
 ## Configuration Examples
 
@@ -75,14 +83,11 @@ Fractional Scheduler override:
 - When enabled, a deck with unsuspended new cards is treated as healthy if the Fractional Scheduler API reports that its repeating schedule will yield `>0` new cards again at some point.
 - This is optional and defaults off.
 
-## Install (From Source)
+## Migration Note
 
-1. Clone this repository.
-2. Copy or symlink it to your Anki addons folder as `notify-empty-decks`:
-   - macOS example: `~/Library/Application Support/Anki2/addons21/notify-empty-decks`
-3. Restart Anki.
+If you previously used the standalone notify add-on, remove it from your Anki `addons21` directory and use the merged scheduler add-on instead.
 
 ## Notes
 
 - Works in Anki's Qt6/PyQt6 environment (Anki 25.x).
-- Settings are stored in `config.json`.
+- `config.json` in this repo is only legacy local state from the standalone add-on.
