@@ -799,6 +799,8 @@ def _build_settings_dialog() -> QDialog:
     dialog = QDialog(mw)
     dialog.setModal(False)
     layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(12, 12, 12, 12)
+    layout.setSpacing(10)
 
     intro = QLabel(
         "Show a warning badge beside deck rows when included decks are blocked by a 0/day "
@@ -812,6 +814,7 @@ def _build_settings_dialog() -> QDialog:
     layout.addWidget(note)
 
     form = QFormLayout()
+    form.setVerticalSpacing(10)
 
     dialog.use_regex_checkbox = QCheckBox("Use regular expressions")
     form.addRow("Pattern mode", dialog.use_regex_checkbox)
@@ -889,7 +892,7 @@ def _show_settings() -> None:
     _update_pattern_mode_help(_settings_dialog)
     _update_container_mode_help(_settings_dialog)
     _update_fractional_override_help(_settings_dialog)
-    _settings_dialog.resize(560, 420)
+    _settings_dialog.resize(860, 760)
     _settings_dialog.show()
     _settings_dialog.raise_()
     _settings_dialog.activateWindow()
