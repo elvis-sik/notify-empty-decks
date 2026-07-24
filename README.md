@@ -1,7 +1,7 @@
 # Notify Empty Decks
 
-[![Status: superseded](https://img.shields.io/badge/status-superseded-6b7280)](https://github.com/elvis-sik/anki-fractional-scheduler)
-[![Use Fractional New-Card Scheduler](https://img.shields.io/badge/current%20add--on-Fractional%20New--Card%20Scheduler-2f80ed)](https://github.com/elvis-sik/anki-fractional-scheduler)
+[![Status: superseded](https://img.shields.io/badge/status-superseded-6b7280)](https://github.com/ritornello-labs/anki-fractional-scheduler)
+[![Use Fractional New-Card Scheduler](https://img.shields.io/badge/current%20add--on-Fractional%20New--Card%20Scheduler-2f80ed)](https://github.com/ritornello-labs/anki-fractional-scheduler)
 
 Legacy reference repo for the old standalone Notify Empty Decks add-on.
 
